@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>식물헌터 39 - 대화면 버전</title>
+    <style>
+        :root { 
+            --main: #2e7d32; --gold: #ffd700; --bg: #f4f7f4; 
+            --wrong: #ff5252; --correct: #4caf50;
+        }
+        
+        /* 전체 글자 크기를 1.5배(기존 16px -> 24px) 기반으로 상향 */
+        body { 
+            font-family: 'Noto Sans KR', sans-serif; background: var(--bg); 
+            margin: 0; padding: 20px; font-size: 1.5rem; line-height: 1.6;
+        }
+
+        header { 
+            text-align: center; padding: 30px; background: white; 
+            border-radius: 25px; box-shadow: 0 6px 15px rgba(0,0,0,0.05); margin-bottom: 30px; 
+        }
+        header h1 { font-size: 2.5rem; margin: 0 0 15px 0; color: #1b5e20; }
+        #stats { font-size: 1.8rem; color: var(--main); font-weight: bold; }
+        
+        #plant-grid { 
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); 
+            gap: 30px; max-width: 1400px; margin: 0 auto; 
+        }
+
+        .plant-card { 
+            background: white; border-radius: 20px; overflow: hidden; 
+            cursor: pointer; transition: 0.3s; position: relative; 
+            border: 5px solid transparent; box-shadow: 0 5px 15px rgba(0,0,0,0.1); 
+            height: 300px; 
+        }
+        .plant-card.collected { border-color: var(--gold); background: #fffdf0; }
+        .plant-card.collected::after { 
+            content: "✅ 수집됨"; position: absolute; top: 15px; right: 15px; 
+            background: var(--gold); padding: 5px 15px; border-radius: 12px; 
+            font-size: 1.2rem; font-weight: bold; 
+        }
+
+        .card-img { width: 100%; height: 200px; object-fit: cover; background: #eee; }
+        .card-name { padding: 20px; text-align: center; font-weight: bold; font-size: 1.8rem; }
+
+        /* 모달 스타일 및 애니메이션 */
+        .modal { 
+            display: none; position: fixed; top: 0; left: 0; 
+            width: 100%; height: 100%; background: rgba(0,0,0,0.9); 
+            z-index: 1000; justify-content: center; align-items: center; 
+        }
+        .modal-content { 
+            background: white; width: 95%; max-width: 700px; 
+            border-radius: 35px; overflow: hidden; position: relative; 
+            max-height: 95vh; display: flex; flex-direction: column; 
+        }
+        
+        /* 사진 고정 영역 */
+        .modal-photo-area { width: 100%; height: 300px; flex-shrink: 0; border-bottom: 5px solid var(--main); }
+        .modal-photo-area img { width: 100%; height: 100%; object-fit: cover; }
+
+        .modal-body { padding: 40px; overflow-y: auto; flex-grow: 1; }
+        .modal-body h2 { font-size: 2.5rem; margin-top: 0; color: var(--main); }
+        
+        .info-table { width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 1.5rem; }
+        .info-table td { padding: 15px 10px; border-bottom: 1px solid #eee; vertical-align: top; }
+        .info-label { font-weight: bold; color: #555; width: 140px; }
+        
+        .opt-btn { 
+            display: block; width: 100%; padding: 25px; margin: 15px 0; 
+            border: 3px solid #ddd; border-radius: 20px; background: white; 
+            cursor: pointer; text-align: left; font-size: 1.6rem; font-weight: bold;
+        }
+        .opt-btn:hover { background: #f1f8e9; border-color: var(--main); }
+
+        .action-btn { 
+            width: 100%; padding: 25px; background: var(--main); color: white; 
+            border: none; border-radius: 20px; font-weight: bold; 
+            font-size: 1.8rem; cursor: pointer; margin-top: 15px; 
+        }
+        
+        .close-x { position: absolute; top: 15px; right: 25px; font-size: 60px; color: white; cursor: pointer; text-shadow: 0 0 15px black; z-index: 1001; }
+        .score-badge { 
+            display: inline-block; background: #e8f5e9; color: var(--main); 
+            padding: 8px 20px; border-radius: 15px; font-weight: bold; 
+            margin-bottom: 20px; font-size: 1.4rem; border: 2px solid var(--main);
+        }
+    </style>
+</head>
+<body>
+
+<header>
+    <h1>🌿 초등 6학년 식물 도감</h1>
+    <div id="stats">보유한 카드: <span id="count">0</span> / 39</div>
+</header>
+
+<div id="plant-grid"></div>
+
+<div id="quiz-modal" class="modal">
+    <span class="close-x" onclick="closeModal()">&times;</span>
+    <div class="modal-content">
+        <div class="modal-photo-area" id="m-photo"></div>
+        <div class="modal-body" id="m-body"></div>
+    </div>
+</div>
+
+<script>
+const plantData = {
+    "해바라기": { h: "1~3m", loc: "미국, 대한민국 등 햇빛 많은 지역", f: ["해를 따라 꽃이 움직이는 성질(굴광성)이 있음", "실제로는 작은 꽃들이 모여 있음", "씨앗이 매우 많고 빽빽하게 배열됨"], use: "해바라기씨, 식용유 생산", etc: "여름철 대표적인 꽃" },
+    "봉선화": { h: "30~80cm", loc: "대한민국, 중국", f: ["씨앗이 익으면 터지면서 튀어나감", "줄기가 부드럽고 물이 많음", "꽃 색이 다양함"], use: "손톱 물들이기", etc: "여름~가을에 꽃이 핌" },
+    "파리지옥": { h: "10~15cm", loc: "미국 습지 지역", f: ["잎이 입처럼 닫혀 벌레를 잡음", "안쪽에 감각 털이 있음", "벌레를 소화해서 영양분을 얻음"], use: "관상용 식물", etc: "식충식물의 대표" },
+    "선인장": { h: "5cm~10m 이상", loc: "사막 (멕시코 등)", f: ["줄기에 물을 저장함", "잎이 가시로 변함", "물이 거의 없어도 오래 생존"], use: "관상용, 일부 식용", etc: "밤에 숨 쉬는 특징 있음" },
+    "강아지풀": { h: "20~60cm", loc: "들판, 길가", f: ["강아지 꼬리처럼 생긴 꽃", "바람에 씨앗이 퍼짐", "매우 잘 자라는 잡초"], use: "가축 사료", etc: "아이들 놀이에 사용" },
+    "민들레": { h: "10~30cm", loc: "전 세계", f: ["씨앗이 솜털처럼 날림", "뿌리가 길고 깊음", "잎은 땅에 붙어 자람"], use: "약용, 식용 가능", etc: "생명력이 매우 강함" },
+    "토끼풀": { h: "10~30cm", loc: "들판", f: ["잎이 3장 (드물게 4장)", "질소를 땅에 공급함", "작은 둥근 꽃이 핌"], use: "목초(사료)", etc: "네잎클로버는 행운 상징" },
+    "나팔꽃": { h: "2~5m 이상", loc: "일본, 대한민국", f: ["아침에 꽃이 피고 오후에 시듦", "줄기가 다른 물체를 감고 올라감", "씨앗은 독성이 있음"], use: "관상용", etc: "여름 대표 꽃" },
+    "채송화": { h: "10~30cm", loc: "브라질 원산", f: ["건조한 곳에서도 잘 자람", "잎이 두껍고 물을 저장", "꽃 색이 다양함"], use: "화단 장식", etc: "햇빛 좋아함" },
+    "무궁화": { h: "2~4m", loc: "대한민국", f: ["한국의 국화", "꽃이 하루만 피고 떨어짐", "계속해서 새로운 꽃이 핌"], use: "관상용", etc: "여름~가을 개화" },
+    "끈끈이주걱": { h: "5~20cm", loc: "대한민국, 호주 습지", f: ["잎에 끈끈한 액체가 있음", "벌레가 붙으면 빠져나오기 어려움", "벌레를 소화해 영양분 사용"], use: "식충식물", etc: "잎이 둥글고 작은 털이 많음" },
+    "미모사": { h: "30cm~1m", loc: "브라질, 인도", f: ["건드리면 잎이 접힘", "밤에도 잎이 닫힘", "줄기에 가시가 있음"], use: "관찰용", etc: "빠르게 반응하는 식물" },
+    "부레옥잠": { h: "20~50cm", loc: "물 위", f: ["물 위에 떠서 자람", "뿌리가 물속에 길게 늘어짐", "물을 깨끗하게 하는 능력"], use: "수질 정화", etc: "보라색 꽃이 핌" },
+    "연꽃": { h: "1~2m", loc: "연못", f: ["물 위로 큰 꽃이 피어남", "잎이 물을 튕겨냄", "진흙 속에서 자람"], use: "식용(연근, 씨앗)", etc: "깨끗함의 상징" },
+    "감자": { h: "50~100cm", loc: "전 세계 재배", f: ["땅속 줄기가 커져서 감자가 됨", "탄수화물이 풍부함", "서늘한 기후 선호"], use: "식량 작물", etc: "꽃도 피지만 잘 안 보임" },
+    "고구마": { h: "1~3m 이상", loc: "대한민국", f: ["뿌리가 커져서 먹는 부분이 됨", "단맛이 강함", "따뜻한 곳 선호"], use: "식량, 간식", etc: "잎도 먹을 수 있음" },
+    "옥수수": { h: "1~3m", loc: "전 세계", f: ["줄기가 곧게 자람", "알갱이가 촘촘함", "바람으로 꽃가루 전달"], use: "식량, 사료", etc: "여름 작물" },
+    "벼": { h: "약 1m", loc: "논", f: ["물이 있는 논에서 자람", "쌀을 생산", "습한 환경 좋아함"], use: "아시아 주요 식량", etc: "가을 수확" },
+    "방울토마토": { h: "50cm~2m", loc: "남아메리카 원산", f: ["작은 열매가 많이 열림", "비타민 풍부", "덩굴처럼 자람"], use: "식용", etc: "햇빛 많이 필요" },
+    "상추": { h: "20~40cm", loc: "대한민국 등", f: ["잎을 먹는 채소", "부드럽고 물이 많음", "빨리 자람"], use: "쌈 채소", etc: "신선할 때 맛있음" },
+    "사과나무": { h: "3~10m", loc: "대한민국 등", f: ["사과 열매 생산", "봄에 꽃 핌", "추운 기후에 강함"], use: "과수 나무", etc: "다양한 품종" },
+    "벚나무": { h: "5~10m", loc: "대한민국, 일본", f: ["봄에 꽃이 한꺼번에 핌", "잎보다 꽃이 먼저", "꽃이 짧게 유지됨"], use: "관상용", etc: "꽃놀이 명소" },
+    "단풍나무": { h: "10~20m", loc: "대한민국 등", f: ["가을에 잎 색 변화", "잎이 손 모양", "빨강, 노랑 변화"], use: "관상용", etc: "단풍 구경" },
+    "은행나무": { h: "20~40m", loc: "중국 원산", f: ["오래 사는 나무", "잎이 부채 모양", "열매 냄새 강함"], use: "가로수", etc: "공해에 강함" },
+    "진달래": { h: "1~3m", loc: "대한민국", f: ["봄에 분홍색 꽃", "꽃을 먹을 수 있음", "잎보다 꽃 먼저"], use: "식용, 관상용", etc: "산에서 자람" },
+    "소나무": { h: "10~30m", loc: "대한민국, 일본", f: ["사계절 내내 푸름", "잎이 바늘 모양", "추위에 강함"], use: "목재", etc: "오래 사는 나무" },
+    "지의류": { h: "몇 mm~수 cm", loc: "바위, 나무", f: ["곰팡이와 조류의 공생", "깨끗한 곳에서 자람", "환경 지표 역할"], use: "환경 모니터링", etc: "극한 환경 생존" },
+    "개나리": { h: "2~3m", loc: "대한민국", f: ["봄에 노란 꽃", "잎보다 꽃 먼저", "가지에 꽃 가득"], use: "관상용", etc: "봄의 전령사" },
+    "할미꽃": { h: "10~40cm", loc: "대한민국", f: ["꽃이 아래로 향함", "씨앗이 흰 털", "봄에 꽃 핌"], use: "약용 식물", etc: "보호 식물" },
+    "바나나": { h: "2~9m", loc: "열대 지역", f: ["줄기가 나무처럼 보임", "열매가 무리로 달림", "부드럽고 닮"], use: "식용 과일", etc: "추위에 약함" },
+    "감나무": { h: "5~15m", loc: "대한민국", f: ["가을에 감 열림", "잎이 넓음", "단맛 또는 떫은맛"], use: "과수 나무", etc: "오래 사는 나무" },
+    "포도나무": { h: "수 m (덩굴)", loc: "대한민국 등", f: ["덩굴 식물", "열매가 송이로 열림", "와인 재료"], use: "과수 나무", etc: "햇빛 필요" },
+    "복숭아나무": { h: "3~6m", loc: "중국 원산", f: ["달콤한 열매", "털 있는 과일", "봄에 꽃"], use: "과수 나무", etc: "향이 좋음" },
+    "귤나무": { h: "2~5m", loc: "제주도", f: ["겨울에 열매", "껍질 잘 벗겨짐", "비타민C 풍부"], use: "과수 나무", etc: "따뜻한 지역" },
+    "밤나무": { h: "10~30m", loc: "대한민국", f: ["가을에 밤 열림", "가시 껍질", "숲에서 자람"], use: "식용, 목재", etc: "가시가 있는 껍질" },
+    "자두나무": { h: "3~10m", loc: "중국 원산", f: ["여름 과일", "새콤달콤", "꽃이 먼저 핌"], use: "과수 나무", etc: "여름 대표 과일" },
+    "모과나무": { h: "5~10m", loc: "대한민국 등", f: ["향이 강한 열매", "겉면이 단단함", "울퉁불퉁함"], use: "차, 약용", etc: "노란 열매" },
+    "대추나무": { h: "5~10m", loc: "대한민국", f: ["작은 열매", "달콤함", "가을 수확"], use: "식용, 약용", etc: "건조에 강함" },
+    "석류나무": { h: "3~5m", loc: "이란, 인도", f: ["붉은 열매", "씨앗이 많음", "껍질 단단"], use: "건강식품", etc: "보석 같은 씨앗" }
+};
+
+let collected = new Set();
+let curP = null, curIdx = 0, curScore = 0;
+
+// 이미지 자동 검색 API 활용
+async function getImg(name) {
+    try {
+        const res = await fetch(`https://ko.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(name)}`);
+        const data = await res.json();
+        return data.thumbnail ? data.thumbnail.source : 'https://via.placeholder.com/500/2e7d32/FFFFFF?text='+name;
+    } catch { return 'https://via.placeholder.com/500'; }
+}
+
+async function init() {
+    const grid = document.getElementById('plant-grid');
+    for (let name in plantData) {
+        const img = await getImg(name);
+        const card = document.createElement('div');
+        card.className = 'plant-card';
+        card.id = `c-${name}`;
+        card.innerHTML = `<img src="${img}" class="card-img"><div class="card-name">${name}</div>`;
+        card.onclick = () => showInfo(name, img);
+        grid.appendChild(card);
+    }
+}
+
+function showInfo(name, img) {
+    if(collected.has(name)) return;
+    const p = plantData[name];
+    curP = { name, ...p, img };
+    
+    document.getElementById('m-photo').innerHTML = `<img src="${img}">`;
+    document.getElementById('m-body').innerHTML = `
+        <h2>🌿 ${name}</h2>
+        <table class="info-table">
+            <tr><td class="info-label">키</td><td>${p.h}</td></tr>
+            <tr><td class="info-label">사는 곳</td><td>${p.loc}</td></tr>
+            <tr><td class="info-label">특징</td><td>• ${p.f.join('<br>• ')}</td></tr>
+            <tr><td class="info-label">쓰임</td><td>${p.use}</td></tr>
+            <tr><td class="info-label">기타</td><td>${p.etc}</td></tr>
+        </table>
+        <button class="action-btn" onclick="startQuiz()">도감 등록 도전 (3문제 중 2문제!)</button>
+    `;
+    document.getElementById('quiz-modal').style.display = 'flex';
+}
+
+function startQuiz() {
+    curIdx = 0; curScore = 0;
+    // 제공된 데이터를 기반으로 각 식물 전용 퀴즈 생성
+    curP.quizzes = [
+        { q: `'${curP.name}'의 특징으로 옳은 것은?`, a: [curP.f[0], "동물처럼 소리를 낸다", "밤에 춤을 춘다"], c: 0 },
+        { q: `'${curP.name}'의 주된 쓰임새(용도)는?`, a: ["자동차 연료", curP.use, "스마트폰 재료"], c: 1 },
+        { q: `'${curP.name}'에 대한 설명 중 맞는 것은?`, a: ["우주에서 왔다", "돌처럼 딱딱하다", curP.etc], c: 2 }
+    ];
+    renderQuiz();
+}
+
+function renderQuiz() {
+    const q = curP.quizzes[curIdx];
+    // 사진은 m-photo에 그대로 두고 바디만 교체
+    document.getElementById('m-body').innerHTML = `
+        <div class="score-badge">질문 ${curIdx + 1} / 3</div>
+        <p style="font-weight:bold; font-size:1.8rem; margin-bottom:25px;">${q.q}</p>
+        ${q.a.map((o, i) => `<button class="opt-btn" onclick="check(${i})">${o}</button>`).join('')}
+        <p style="font-size:1.2rem; color:#666; margin-top:20px;">* 상단 사진을 보며 정답을 맞춰보세요!</p>
+    `;
+}
+
+function check(idx) {
+    if(idx === curP.quizzes[curIdx].c) curScore++;
+    curIdx++;
+    if(curIdx < 3) renderQuiz();
+    else finish();
+}
+
+function finish() {
+    const b = document.getElementById('m-body');
+    if(curScore >= 2) {
+        b.innerHTML = `
+            <div style="text-align:center; padding:20px;">
+                <h1 style="color:var(--correct); font-size:3.5rem;">🎉 성공!</h1>
+                <p style="font-size:1.8rem;">3문제 중 <b>${curScore}문제</b>를 맞혔습니다!<br>도감에 <b>${curP.name}</b> 카드가 등록되었습니다.</p>
+                <button class="action-btn" onclick="closeModal()">확인</button>
+            </div>`;
+        collected.add(curP.name);
+        document.getElementById(`c-${curP.name}`).classList.add('collected');
+        document.getElementById('count').innerText = collected.size;
+    } else {
+        b.innerHTML = `
+            <div style="text-align:center; padding:20px;">
+                <h1 style="color:var(--wrong); font-size:3.5rem;">😢 실패</h1>
+                <p style="font-size:1.8rem;">아쉽네요! 2문제 이상 맞춰야 합니다.<br>(맞힌 개수: ${curScore}개)</p>
+                <button class="action-btn" onclick="showInfo('${curP.name}', '${curP.img}')">다시 공부하기</button>
+            </div>`;
+    }
+}
+
+function closeModal() { document.getElementById('quiz-modal').style.display = 'none'; }
+init();
+</script>
+</body>
+</html>
